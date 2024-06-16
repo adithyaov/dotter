@@ -1,0 +1,122 @@
+#!/bin/bash
+
+# ------------------------------------------------------------------------------
+# Globals
+# ------------------------------------------------------------------------------
+
+DOTTER_CACHE="$HOME/.cache/dotter"
+DOTTER_STORE_WITH_GIT=$(basename -- "$DOTTER_GIT")
+DOTTER_STORE="$DOTTER_CACHE/${DOTTER_STORE_WITH_GIT%.*}"
+DOTTER_TEMP="$HOME/.cache/dotter/tmp"
+
+# ------------------------------------------------------------------------------
+# Functions
+# ------------------------------------------------------------------------------
+
+run () {
+    echo "> $@"
+    eval "$@"
+}
+
+ensureEnv () {
+    local varName="$1"
+    local varValue=$(eval "echo \$$varName")
+    if [ -z "$varValue" ]
+    then
+       echo "\$$varName is not set."
+       exit 1
+    fi
+}
+
+ensureStore () {
+    local dotterStore="$DOTTER_STORE"
+    local dotterRef="$DOTTER_REF"
+    local dotterGit="$DOTTER_GIT"
+    local dotterCache="$DOTTER_CACHE"
+
+    run mkdir -p "$dotterCache"
+
+    if [ -d "$dotterStore" ]
+    then
+        run cd "$dotterStore"
+        run git fetch
+        run git checkout "$dotterRef"
+    else
+        run git clone "$dotterGit" "$dotterStore"
+        run cd "$dotterStore"
+        run git checkout "$dotterRef"
+    fi
+}
+
+syncFile () {
+    local dotterStore="$DOTTER_STORE"
+    local storeFile="$1"
+    local homeStoreFile="$dotterStore/$storeFile"
+    local sanitizedStoreFile=$(echo "$storeFile" | grep -Pho 'dot_\K[^" ]+')
+    local homeFile="$HOME/.$sanitizedStoreFile"
+    local homeFileBackup="${homeFile}.dotter.bkup"
+    local homeFileDir=$(dirname "$homeFile")
+
+    if [ -z "$sanitizedStoreFile" ]
+    then
+        echo "Sanitized store file is empty where store file is $storeFile"
+        exit 1
+    fi
+
+    run mkdir -p "$homeFileDir"
+
+    if [ -e "$homeFile" ]
+    then
+        echo "$homeFile exists. Backing it up to $homeFileBackup"
+        run rm -r "$homeFileBackup"
+        run mv "$homeFile" "$homeFileBackup"
+    fi
+
+    if [ ! -e "$homeStoreFile" ]
+    then
+        echo "$homeStoreFile does not exist."
+        exit 1
+    fi
+
+    run cp -r "$homeStoreFile" "$homeFile"
+}
+
+syncAll () {
+    local dotterStore="$DOTTER_STORE"
+    run cd "$dotterStore"
+    while IFS= read -r line; do
+        syncFile "$line"
+    done <<< $(ls | grep -Ph 'dot_\K[^" ]+')
+}
+
+showHelp () {
+    echo "dotter <args>"
+    echo ""
+    echo "Arguments:"
+    echo "--help: Show this help text"
+    echo "<file-path>: Sync the file-path"
+}
+
+main () {
+    local arg="$1"
+
+    if [ "$arg" == "--help" ]
+    then
+        showHelp
+        exit 0
+    fi
+
+    ensureEnv "DOTTER_GIT"
+    ensureEnv "DOTTER_REF"
+    ensureStore
+
+    if [ "$arg" == "--all" ]
+    then
+        syncAll
+    else
+        syncFile "$arg"
+    fi
+}
+
+
+main "$@"
