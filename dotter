@@ -68,7 +68,7 @@ syncFile () {
     if [ -e "$homeFile" ]
     then
         echo "$homeFile exists. Backing it up to $homeFileBackup"
-        run rm -r "$homeFileBackup"
+        run rm -r "$homeFileBackup" || true
         run mv "$homeFile" "$homeFileBackup"
     fi
 
